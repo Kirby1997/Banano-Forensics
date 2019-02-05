@@ -144,6 +144,7 @@ class MatplotlibWidget(QMainWindow):
         nx.draw_networkx(g,pos=sp,with_labels=True,node_size=35,font_size=7)
         #self.mpl_widget.canvas.axes.plot(g)
         self.mpl_widget.canvas.draw_idle()
+        print(nx.info(g))
         
         
     def addItem(self):
