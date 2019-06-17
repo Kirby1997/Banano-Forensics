@@ -1,158 +1,379 @@
 # ------------------------------------------------------
-# ---------------------- main.py -----------------------
+# ---------------------- gui.py -----------------------
 # ------------------------------------------------------
 from PyQt5.QtWidgets import*
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.uic import loadUi
-
-import networkx as nx
-
+import PyQt5
+from PyQt5 import QtCore
+from enum import Enum
 from matplotlib.backends.backend_qt5agg import (NavigationToolbar2QT as NavigationToolbar)
+import networkx as nx
+import json
+import asyncio
+import aiohttp
+import scipy # Not directly used but NetworkX tries to use it when running out of memory
 
-import numpy as np
-import random
-from collections import defaultdict
-     
+
+# Code to deal with high resolution monitors copied from: https://coad.ca/2017/05/15/one-way-to-deal-with-high-dpi-4k-screens-in-python/
+if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+    PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+
+if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+    PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
+# For storing runtime variables instead of using globals
+class Storage:
+    knownaddresses = []
+    tipbotaccs = []
+    banbetaccs = []
+    known_labels = {}
+    defaultaddr = ""
+    host = ""
+
+
+async def find_reps(nodes):
+
+    """Go through all the nodes, make an RPC call to the node and request the representative of the account"""
+    tasks = []
+    for address in nodes:
+        tasks.append(get_rep(address))
+    ret = []
+    while len(tasks):
+        done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            result = task.result()
+            if result is not None:
+                ret.append(task.result())
+
+    for pair in ret:
+        node = pair[0]
+        rep = pair[1]
+
+        if rep == "ban_1tipbotgges3ss8pso6xf76gsyqnb69uwcxcyhouym67z7ofefy1jz7kepoy":
+            Storage.tipbotaccs.append(node)
+
+        elif rep == "ban_1banbet1hxxe9aeu11oqss9sxwe814jo9ym8c98653j1chq4k4yaxjsacnhc":
+            Storage.banbetaccs.append(node)
+
+        pass
+
+
+async def json_get(payload):
+    try:
+        connector = aiohttp.TCPConnector(limit=60)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.post(Storage.host, json=payload, timeout=100) as resp:
+                json_resp = await resp.json(content_type=None)
+                return json_resp
+    except BaseException:
+        return None
+
+
+async def get_rep(address):
+
+    payload = {"action": "account_representative", "account": address}
+    resp_json = await json_get(payload)
+    try:
+        rep = resp_json['representative']
+    except:
+        rep = 'No rep'
+    return address, rep
+
+
+class PlotType(Enum):
+    ALL = 1
+    SEND = 2
+    RECEIVE = 3
+
+
+def set_defaults():
+
+    """Set a default host and address and put them into a config file"""
+    config = list()
+    config.append({
+        "host": "http://206.189.120.80:7072",
+        "default address": "ban_1tc93no6sebhpbh69b877wy3hhhxriqoj5cneq3qbfg9skw63o9wbezrjmka"
+    })
+    Storage.host = "http://206.189.120.80:7072"
+    Storage.defaultaddr = "ban_1tc93no6sebhpbh69b877wy3hhhxriqoj5cneq3qbfg9skw63o9wbezrjmka"
+    with open("config.cfg", "w") as output:
+        json.dump(config, output)
+
+
+def load_config():
+
+    """Import settings from config file in case of use of own node"""
+    try:
+        with open("config.cfg", "r") as file:
+            try:
+                config = json.load(file)
+                for attribute in config:
+                    Storage.host = attribute["host"]
+                    Storage.defaultaddr = attribute["default address"]
+            except:
+                set_defaults()
+
+    except IOError:
+        print("config.cfg not found. Creating file and setting to defaults")
+        set_defaults()
+
+
+async def get_next_addresses(node_address, trans, plottype):
+
+    """Create list of descendants for node."""
+    address_list = []
+    # Do lookup to get next generation
+    payload = {"action": "account_history",
+               "account": node_address,
+               "count": trans}
+
+    history_json = await json_get(payload)
+
+    if plottype == PlotType.ALL:
+        for account in history_json['history']:
+            address_list.append(account['account'])
+    elif plottype == PlotType.SEND:
+        for account in history_json['history']:
+            if account['type'] == "send":
+                address_list.append(account['account'])
+    elif plottype == PlotType.RECEIVE:
+        for account in history_json['history']:
+            if account['type'] == "receive":
+                address_list.append(account['account'])
+    return address_list
+
+
+async def calculate_pairs(addresses, trans, plottype):
+
+    """Create list of descendants for each node."""
+
+    tasks = []
+    for address in addresses:
+        payload = {"action": "account_history",
+                   "account": address,
+                   "count": trans}
+        tasks.append(json_get(payload))
+    ret = []
+    while len(tasks):
+        done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            result = task.result()
+            if result is not None:
+                ret.append(task.result())
+    lock = asyncio.Lock()
+
+    next_addresses = []
+    potential_pairs = {}
+    address_list = []
+    for history_json in ret:
+        if plottype == PlotType.ALL:
+            for account in history_json['history']:
+                address_list.append(account['account'])
+        elif plottype == PlotType.SEND:
+            for account in history_json['history']:
+                if account['type'] == "send":
+                    address_list.append(account['account'])
+        elif plottype == PlotType.RECEIVE:
+            for account in history_json['history']:
+                if account['type'] == "receive":
+                    address_list.append(account['account'])
+        new_connections = []
+        for potential_address in address_list:
+            if potential_address not in potential_pairs.keys():
+                new_connections.append(potential_address)
+        account = history_json['account']
+        await lock.acquire()
+        try:
+            potential_pairs[account] = new_connections
+            next_addresses = next_addresses + new_connections
+            address_list = []
+        finally:
+            lock.release()
+
+    return potential_pairs, next_addresses
+
+
 class MatplotlibWidget(QMainWindow):
-    
+
     def __init__(self):
-        
+
         QMainWindow.__init__(self)
 
-        loadUi("interface.ui",self)
+        loadUi("interface.ui", self)
 
         self.setWindowTitle("Banano Forensics")
 
-        self.standardViewBtn.clicked.connect(self.standardGraph)
+        self.receiveViewBtn.clicked.connect(self.receive_graph)
+        self.sentViewBtn.clicked.connect(self.sent_graph)
+        self.banGraphBtn.clicked.connect(self.full_graph)
 
-        self.hierarchyViewBtn.clicked.connect(self.hierarchyGraph)
+        self.setNoTransBtn.clicked.connect(self.set_max_trans)
+        self.setAddressBtn.clicked.connect(self.set_address)
+        self.setDepthBtn.clicked.connect(self.set_max_generations)
 
-        self.tracerViewBtn.clicked.connect(self.updateGraph)
-
-        self.exampleBtn.clicked.connect(self.example)
-        
-        self.familyBtn.clicked.connect(self.familyGraph)
+        self.addressListBtn.clicked.connect(self.load_addresses)
 
         self.addToolBar(NavigationToolbar(self.mpl_widget.canvas, self))
-        
-        self.setAddressBtn.clicked.connect(self.addItem)
 
+        self.addressValue.setText(Storage.defaultaddr)
+        self.transValue.setText("2")  # 2 as default value
+        self.depthValue.setText("2")  # 2 as default value
 
-    def example(self):
-        self.mpl_widget.canvas.axes.clear()
+        self.FontSizeSlider.valueChanged.connect(self.update_slider_label)
+        self.FontSizeSlider.setValue(5)
+        self.FontSizeLbl.setText("Font size = " + str(self.FontSizeSlider.value()))
+
+    def receive_graph(self):
+        self.statusBar().showMessage('Plotting receive graph in progress...')
+        plottype = PlotType.RECEIVE
+        self.plot_graph(plottype)
+        self.statusBar().showMessage('Plotted receive graph')
+
+    def sent_graph(self):
+        self.statusBar().showMessage('Plotting send graph in progress...')
+        plottype = PlotType.SEND
+        self.plot_graph(plottype)
+        self.statusBar().showMessage('Plotted send graph')
+
+    def full_graph(self):
+        self.statusBar().showMessage('Plotting full graph in progress...')
+        plottype = PlotType.ALL
+        self.plot_graph(plottype)
+        self.statusBar().showMessage('Plotted full graph')
+
+    def plot_graph(self, plottype):
+        """Plot the graph into the matplotlib widget"""
+        knownaddresses = Storage.knownaddresses
+        known_labels = Storage.known_labels
         self.mpl_widget.figure.clf()
         self.mpl_widget.canvas.axes = self.mpl_widget.canvas.figure.add_subplot(111)
-        x = [i for i in range(100)]
-        y = [i ** 0.5 for i in x]
-        self.mpl_widget.canvas.axes.plot(x, y, 'r.-')
-        self.mpl_widget.canvas.axes.set_title('Square Root Plot')
+        self.mpl_widget.canvas.axes.axis('off')
+        address = self.get_address()
+        max_gens = self.get_max_generations()
+        trans = self.get_max_trans()
+
+        completed_nodes = {address: []}
+        addresses_in_progress = list()
+
+        # To start we have no completed nodes and have one
+        # address to work on
+        addresses_in_progress.append(address)
+        for generation in range(int(max_gens)):
+            try:
+                calculated_pairs = asyncio.run(calculate_pairs(addresses_in_progress, trans, plottype))
+                completed_nodes = {**completed_nodes, **calculated_pairs[0]}
+                next_addresses = calculated_pairs[1]
+                addresses_in_progress = next_addresses
+            except:
+                print("Network too big to generate more nodes")
+                pass
+
+        print("COMPLETED NODES")
+
+        g = nx.from_dict_of_lists(completed_nodes)
+        nx.write_gexf(g, "{}.gexf".format(address))
+        print("Saved Gephi graph as {}.gexf".format(address))
+        sp = nx.spring_layout(g, iterations=100, scale=1)
+
+        show_labels = self.get_show_labels()
+        labels = {}
+
+        for node in known_labels:
+            try:
+                if node in g.nodes():
+                    labels[node] = known_labels[node]
+            except:
+                print("No known addresses to look for")
+        fontsize = self.FontSizeSlider.value()
+        nx.draw_networkx(g, pos=sp, with_labels=show_labels, font_size=fontsize, node_size=10, node_color="r")
+        try:
+            # use Asyncio to get all the representatives of nodes and append them to lists
+            asyncio.run(find_reps(g.nodes()))
+            nx.draw_networkx(g, pos=sp, with_labels=False, nodelist=Storage.tipbotaccs, node_size=10, node_color='y')
+            nx.draw_networkx(g, pos=sp, with_labels=False, nodelist=Storage.banbetaccs, node_size=10, node_color='c')
+        except:
+            print("Sockets limit reached")
+        if knownaddresses != 1:
+            pair = 0
+            while pair < len(knownaddresses):
+
+                if g.has_node(knownaddresses[pair][0]):
+                    nx.draw_networkx(g, pos=sp, with_labels=False, nodelist=[knownaddresses[pair][0]], node_size=12, node_color='b',
+                                     font_color='b')
+                    nx.draw_networkx_labels(g, sp, labels, font_size=fontsize, font_color='b')
+                    print(nx.shortest_path(g, address, knownaddresses[pair][0]))
+                pair += 1
+        nx.draw_networkx(g, pos=sp, with_labels=False, nodelist=[address], node_size=10, node_color='g')
         self.mpl_widget.canvas.draw_idle()
+        print("Number of nodes: " + str(len(g)))
+        Storage.tipbotaccs.clear()
+        Storage.banbetaccs.clear()
 
-    def standardGraph(self):
-        self.mpl_widget.figure.clf()
-        #self.mpl_widget.canvas.axes.clear()
-        B = nx.Graph()
-        B.add_nodes_from([1, 2, 3, 4], bipartite=0)
-        B.add_nodes_from(['a', 'b', 'c', 'd', 'e'], bipartite=1)
-        B.add_edges_from([(1, 'a'), (2, 'c'), (3, 'd'), (3, 'e'), (4, 'e'), (4, 'd')])
+    def update_slider_label(self):
+        value = self.FontSizeSlider.value()
+        self.FontSizeLbl.setText("Font Size = " + str(value))
 
-        X = set(n for n, d in B.nodes(data=True) if d['bipartite'] == 0)
-        Y = set(B) - X
-
-        X = sorted(X, reverse=True)
-        Y = sorted(Y, reverse=True)
-
-        pos = dict()
-        pos.update((n, (1, i)) for i, n in enumerate(X))  # put nodes from X at x=1
-        pos.update((n, (2, i)) for i, n in enumerate(Y))  # put nodes from Y at x=2
-        nx.draw(B, pos=pos, with_labels=True)
-
-        #self.mpl_widget.canvas.axes.set_title('standard')
-        #self.mpl_widget.canvas.axes.plot()
-        self.mpl_widget.canvas.draw_idle()
-
-    def hierarchyGraph(self):
-        self.mpl_widget.canvas.axes.clear()
-        self.mpl_widget.figure.clf()
-        #self.MplWidget.canvas.axes.set_axis_off()
-        G = nx.MultiGraph()
-        G.add_edge('a', 'b', weight=0)
-        G.add_edge('b', 'c', weight=10)
-        G.add_edge('b', 'd', weight=10)
-        G.add_edge('b', 'e', weight=10)
-        G.add_edge('c', 'g', weight=20)
-        G.add_edge('c', 'h', weight=20)
-        G.add_edge('c', 'i', weight=20)
-        G.add_edge('d', 'j', weight=30)
-        G.add_edge('d', 'k', weight=30)
-        G.add_edge('d', 'l', weight=30)
-        G.add_edge('e', 'm', weight=40)
-        G.add_edge('e', 'n', weight=40)
-        G.add_edge('e', 'o', weight=40)
-
-        zero = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] == 0]
-        ten = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] < 10]
-        twenty = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] == 20]
-        thirty = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] == 30]
-        forty = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] == 40]
-
-        pos = nx.spring_layout(G)
-
-        nx.draw_networkx_nodes(G, pos, node_size=700)
-
-        nx.draw_networkx_edges(G, pos, width=6)
-        nx.draw_networkx_edges(G, pos, width=6, alpha=0.5, edge_color='b', style='dashed')
-
-        nx.draw_networkx_labels(G, pos, font_size=20, font_family='sans-serif')
-        # nx.draw(G)
-        #plt.axis('off')
-        self.mpl_widget.canvas.axes.plot(G)
-        self.mpl_widget.canvas.axes.set_title('Hierarchy')
-        self.mpl_widget.canvas.draw()
-
-    def updateGraph(self):
-        self.mpl_widget.canvas.axes = self.mpl_widget.canvas.figure.add_subplot(111)
-        fs = 500
-        f = random.randint(1, 100)
-        ts = 1/fs
-        length_of_signal = 100
-        t = np.linspace(0,1,length_of_signal)
-
-        cosinus_signal = np.cos(2*np.pi*f*t)
-        sinus_signal = np.sin(2*np.pi*f*t)
-
-        self.mpl_widget.canvas.axes.clear()
-
-        self.mpl_widget.canvas.axes.plot(t, cosinus_signal)
-        self.mpl_widget.canvas.axes.plot(t, sinus_signal)
-        self.mpl_widget.canvas.axes.legend(('cosinus', 'sinus'),loc='upper right')
-
-        self.mpl_widget.canvas.axes.set_title('Cosinus - Sinus Signal')
-        self.mpl_widget.canvas.draw()
-        
-    def familyGraph(self):
-
-        self.mpl_widget.figure.clf()
-        #g=nx.read_edgelist('edge_list.txt',create_using=nx.Graph(),nodetype=str)
-        
-        nodes = defaultdict(list)
-        nodes = {'ban_1tc93no6sebhpbh69b877wy3hhhxriqoj5cneq3qbfg9skw63o9wbezrjmka': ['ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3uiszoq1fca35hjigdbr7p7muo6pfih78s5cubj9e5jbqq5tgz159s7oi8j4', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3faucb1o9ifundznqw6xn1xkybztz4zfbn4fw95ujfy48ds1ebayzycfsspk', 'ban_3temho9bnim1acqzwwa673yeggeudzo6y857y4t38pmu6jx79amtku8szp3s', 'ban_1dec111t9fpoqspq7gm7w4zw88su5dgs4j1rqttds91ezyyigz7988saftuw', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_1xqyrgt37p6hi3bezgdtxkgq5t8g3eat1bea4uiwrj7rkb61ztxx6yukrz1j', 'ban_1gyrzi4onyafm1ihtzcw5u1gua6pcajymkdmmctfq7bfskjuzqisdsswptt8', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_1u166355pzbk5548zfswf59fxseu9w8y6zk9jomqrrhihh3bu9a8yfygwqbj', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_3ijte5usq7hyawytcuamochcgft6duwjjxnoyfknwnbrsnp1yymqa4me7xne', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_17ejzfncch4463673zqq9kr4kxn5sornnedtbdtzi98kncazt456bw8a5kta', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3faucb1o9ifundznqw6xn1xkybztz4zfbn4fw95ujfy48ds1ebayzycfsspk', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3he11oi45zcfe3i65wogyikf1569mu1jcf9kj4o7jojpebmmkbhrpf38qrqx', 'ban_1no3g6ho99zjfgujgkyqmmedi4k9u46yxwnf8bchxs4sof1yg334u8yrt4h5', 'ban_1no4g7k51giqnhscpqm153hamoe956958yrr79sggzgy8wriiemx7owh89ka', 'ban_1tcudnsjjcyposgpwe18dppccknd67yazou58jc3ggpmu9ihepba4o1d9jap', 'ban_3z6nsdpos63dobu5znwhqaxh8a7xzgy99p8uwqx1ymkptyzj5gwjjz4fra7x', 'ban_3z6nsdpos63dobu5znwhqaxh8a7xzgy99p8uwqx1ymkptyzj5gwjjz4fra7x', 'ban_3matchhw9ksc9xfqdhedfn34n8kw6woxr36gnyoop7jc14j7unw9uknhjk8h', 'ban_3ezfbygw1gcmbt7ficnddfwwe1g7unbgfbcoy979wy4agmr4pkdiiamic7ew', 'ban_3z6nsdpos63dobu5znwhqaxh8a7xzgy99p8uwqx1ymkptyzj5gwjjz4fra7x', 'ban_3runnerrxm74165sfmystpktzsyp7eurixwpk59tejnn8xamn8zog18abrda', 'ban_39qa19wke55s46cejgmgcmjfpgp6hrc86sjsi76upxhxtjafoxs7j8kcfod8', 'ban_39qa19wke55s46cejgmgcmjfpgp6hrc86sjsi76upxhxtjafoxs7j8kcfod8', 'ban_3mdoqczk99phi6hhpi4wmuzya5d3gf7djts95aps7p7wtn7t76ohibwkjxzi', 'ban_1dbw7scnhqr9y4h1fgp91jucrhfdedjfuiupjdcc711u4hcdtta6fnnmmbi9', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_39qa19wke55s46cejgmgcmjfpgp6hrc86sjsi76upxhxtjafoxs7j8kcfod8', 'ban_39qa19wke55s46cejgmgcmjfpgp6hrc86sjsi76upxhxtjafoxs7j8kcfod8', 'ban_39qa19wke55s46cejgmgcmjfpgp6hrc86sjsi76upxhxtjafoxs7j8kcfod8', 'ban_3matchhw9ksc9xfqdhedfn34n8kw6woxr36gnyoop7jc14j7unw9uknhjk8h', 'ban_3matchhw9ksc9xfqdhedfn34n8kw6woxr36gnyoop7jc14j7unw9uknhjk8h', 'ban_3matchhw9ksc9xfqdhedfn34n8kw6woxr36gnyoop7jc14j7unw9uknhjk8h', 'ban_3runnerrxm74165sfmystpktzsyp7eurixwpk59tejnn8xamn8zog18abrda', 'ban_3i63uiiq46p1yzcm6yg81khts4xmdz9nyzw7mdhggxdtq8mif8scg1q71gfy', 'ban_3twitegseiodhntduw76t3gsoqsn1ooo4dhpc5p6r5bqx8phbufdr876odh3']}
-        g = nx.from_dict_of_lists(nodes)
-        nx.write_gexf(g, 'hmm.gexf')
-
-        sp=nx.spring_layout(g)
-
-        nx.draw_networkx(g,pos=sp,with_labels=True,node_size=35,font_size=7)
-        #self.mpl_widget.canvas.axes.plot(g)
-        self.mpl_widget.canvas.draw_idle()
-        print(nx.info(g))
-        
-        
-    def addItem(self):
+    def set_address(self):
         value = self.setAddressTxt.text()
-        self.setAddressTxt.clear()
-        self.listWidget.addItem(value)
+        if value == "":
+            address = "ban_1tc93no6sebhpbh69b877wy3hhhxriqoj5cneq3qbfg9skw63o9wbezrjmka"
+            self.addressValue.setText(address)
+        else:
+            address = value
+            self.addressValue.setText(address)
 
-app = QApplication([])
-window = MatplotlibWidget()
-window.show()
-app.exec_()
+    def get_address(self):
+        address = self.addressValue.text()
+        return address
+
+    def set_max_trans(self):
+        max_trans = self.noTransBox.text()
+        self.transValue.setText(max_trans)
+
+
+    def get_max_trans(self):
+        trans = self.transValue.text()
+        return trans
+
+    def set_max_generations(self):
+        depth = self.depthBox.text()
+        self.depthValue.setText(depth)
+
+    def get_max_generations(self):
+        depth = self.depthValue.text()
+        return depth
+
+    def get_show_labels(self):
+        labels = self.labelsToggle.isChecked()
+        return labels
+
+    def load_addresses(self):
+        print("Loading known addresses")
+        filename = QFileDialog.getOpenFileName(self, 'Open File')
+        if filename[0]:
+            file = open(filename[0], 'r')
+            linenum = 0
+            for line in file:
+                linenum += linenum
+                keypair = line.strip()
+                keypair = keypair.split(":")
+                Storage.knownaddresses.append(keypair)
+                try:
+                    Storage.known_labels[keypair[0]] = keypair[1]
+                    self.addressListBox.append(keypair[0] + " - " + keypair[1])
+                except:
+                    print("inconsistency at line {} containing \"{}\" ".format(linenum, line))
+                    print("Formatting should be address:label")
+        print("Loaded file")
+
+
+def main():
+    load_config()
+    app = QApplication([])
+    window = MatplotlibWidget()
+    window.show()
+    app.exec_()
+
+
+main()
