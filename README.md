@@ -94,8 +94,6 @@ ban_14bbb43paw4gtkc69j445e6ogxytns35ks9qk8pe7g37qyc7as63tipfz6gp:Seed wiper
 The Banano Runner botter botted the Banano Runner faucet and took $15,000 worth of Banano. The seed wiper accessed logs
 which were not meant to be visible and found publicly posted seeds.
 
-## Author
-Application written by Jacob Wilkinson
 
 
 
