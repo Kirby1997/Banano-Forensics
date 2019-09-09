@@ -90,6 +90,7 @@ List of suspicious addresses:
 ```
 ban_19i3rxxmdtxa7zsxoroygx38xpcad4gp7ouwf9bn5raum1d3mc4b5w7proxy:Banano Runner botter
 ban_14bbb43paw4gtkc69j445e6ogxytns35ks9qk8pe7g37qyc7as63tipfz6gp:Seed wiper
+ban_3ri6hkmndz8aehqjhuru1s5ozcb14ifzyqbax8p8arm9u7pykz6qoaj8rimz:bonus-program phish
 ```
 The Banano Runner botter botted the Banano Runner faucet and took $15,000 worth of Banano. The seed wiper accessed logs
 which were not meant to be visible and found publicly posted seeds.
