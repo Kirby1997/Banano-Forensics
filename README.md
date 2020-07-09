@@ -87,6 +87,7 @@ ban_1mar4j94wjqnkourdfw1jwqzsn4a9p6fqfjzrjsyjiym4zixm1ek3bkqk1r7:Monkey Match Ma
 ban_3craftbqpyfbr4gdjhdwnrsd4zwr73wg6xojnr61nres8mnbz5x1o6563qxc:BananoCraft
 ban_1monkeyt1x77a1rp9bwtthajb8odapbmnzpyt8357ac8a1bcron34i3r9y66:Monkey Talks
 ban_1boompow14irck1yauquqypt7afqrh8b6bbu5r93pc6hgbqs7z6o99frcuym:BoomPoW
+ban_3disc5557sb9ri99h7czmn6ms5kcfsafnsxekarg1pp9f3a1ik4ndjcb9cod:Discord Beta
 ``` 
 List of Banano gambling services:
 ```
