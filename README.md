@@ -65,6 +65,7 @@ ban_1gooj14qko1u6md87aga9c53nf4iphyt1ua7x3kq1wnkdh49u5mndqygbr1q:Ataix
 ban_1fxc48dynhbjb69uuyue4bsfuymxick8js14synwznduy61g6i9esdeasmem:GJ
 ban_36e1qnwo5faf7uapp6gbzzmzt3bgz6a93txuukmr45pmodcy4q7pwaray1u9:Atomars
 ban_1oaocnrcaystcdtaae6woh381wftyg4k7bespu19m5w18ze699refhyzu6bo:nano.trade
+ban_16c58nu7kmays7bmfaq7u4zpf8oady9ydgwkb6pcxegyx3n1nxygix5r4hpi:Altilly
 ```
 List of Banano distribution addresses:
 ```
@@ -108,6 +109,11 @@ ban_19i3rxxmdtxa7zsxoroygx38xpcad4gp7ouwf9bn5raum1d3mc4b5w7proxy:Banano Runner b
 ban_14bbb43paw4gtkc69j445e6ogxytns35ks9qk8pe7g37qyc7as63tipfz6gp:Seed wiper
 ban_3ri6hkmndz8aehqjhuru1s5ozcb14ifzyqbax8p8arm9u7pykz6qoaj8rimz:bonus-program phish
 ```
+Other:
+```
+ban_3imophzbk9ruq3ju18jyw37376h3wdeon15asw4yj3kfgxs6m1eg7784a4im:Tip.cc
+```
+
 The Banano Runner botter botted the Banano Runner faucet and took $15,000 worth of Banano. The seed wiper accessed logs
 which were not meant to be visible and found publicly posted seeds.
 
