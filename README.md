@@ -95,6 +95,7 @@ ban_1santayq7qgtoar9s9kx9ur5jw6ustty741bxnidanf8miuakju7kqb8imwo:Santa Discord B
 ban_1treatf1gc4acpgjqzg9jxthwqnew7gef5wf7mru4ffyeb9ayj61rejzs5st:Trick or Treat Bot
 ban_1ce1ery6hqwyqqyh15m4atcoaywd8rycyapjjooqeg7gi149kmatjbb3wiwx:Celery/Salary
 ban_1zookix8zpo13go1xrbwcmodjfsr8xw5e18smbmz8mh4orkmd33t8zmescpo:Distribution Allowances
+ban_1nice4sy9fgcb8qxbx7nkj9ajc79aapqnayrfk4gow184mgnfm49ncstg36w:NiceBanano
 ``` 
 List of Banano gambling services:
 ```
