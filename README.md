@@ -69,6 +69,7 @@ ban_1oaocnrcaystcdtaae6woh381wftyg4k7bespu19m5w18ze699refhyzu6bo:nano.trade
 ban_1ddaz5y8jk47hkicpi1kc38kg359r74y38gmmq6moiki11gx1g4a9qb4r7c6:moon.banano.trade
 ban_16c58nu7kmays7bmfaq7u4zpf8oady9ydgwkb6pcxegyx3n1nxygix5r4hpi:Altilly
 ban_1nrcne47secz1hnm9syepdoob7t1r4xrhdzih3zohb1c3z178edd7b6ygc4x:CoinEx
+ban_1wbanhr5jr179uw34793g96qihwmisd6bypp9ofy6yy77hchge96tqmwhq9a:Wrapped Banano
 ```
 List of Banano distribution addresses:
 ```
