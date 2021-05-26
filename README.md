@@ -70,6 +70,7 @@ ban_1ddaz5y8jk47hkicpi1kc38kg359r74y38gmmq6moiki11gx1g4a9qb4r7c6:moon.banano.tra
 ban_16c58nu7kmays7bmfaq7u4zpf8oady9ydgwkb6pcxegyx3n1nxygix5r4hpi:Altilly
 ban_1nrcne47secz1hnm9syepdoob7t1r4xrhdzih3zohb1c3z178edd7b6ygc4x:CoinEx
 ban_1wbanhr5jr179uw34793g96qihwmisd6bypp9ofy6yy77hchge96tqmwhq9a:Wrapped Banano
+ban_3a1dokzzuc334kpsedakxz5hw4cauexjori8spcf7pninujry43dxkbam4o6:BNSwap
 ```
 List of Banano distribution addresses:
 ```
@@ -100,6 +101,7 @@ ban_1ce1ery6hqwyqqyh15m4atcoaywd8rycyapjjooqeg7gi149kmatjbb3wiwx:Celery/Salary
 ban_1zookix8zpo13go1xrbwcmodjfsr8xw5e18smbmz8mh4orkmd33t8zmescpo:Distribution Allowances
 ban_1nice4sy9fgcb8qxbx7nkj9ajc79aapqnayrfk4gow184mgnfm49ncstg36w:NiceBanano
 ban_1bonusncatu5rsrctx1djmgrragfwpj4ujsk939utmtdwskhtiourh8997eh:Contributor Bonus
+ban_3m8mdu1jxuntoe19wemgohduss3cn7ctxbt41ioh87mfjz9ho8o15yhjas96:TriggerHaven Stream
 ``` 
 List of Banano gambling services:
 ```
