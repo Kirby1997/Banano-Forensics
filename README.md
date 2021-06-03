@@ -51,6 +51,7 @@ with [Gephi](https://gephi.org)
 node or other fork of Nano it should work as the nodes run the same protocols however this has not been tested. 
 
 ##Useful resources
+NO LONGER UPDATING ADDRESS LIST. PLEASE USE https://github.com/Kirby1997/BananoAddressAPI  
 List of exchanges and their related addresses:
 ```
 ban_31dhbgirwzd3ce7naor6o94woefws9hpxu4q8uxm1bz98w89zqpfks5rk3ad:Mercatox
